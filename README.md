@@ -1,9 +1,51 @@
-## HTTP decorators
+# mini-nest
 
-`@Controller()` зберігає базовий шлях контролера у metadata, а `@Get()` і `@Post()` зберігають HTTP-метод та шлях конкретного методу.
+A small custom IoC container and HTTP framework inspired by NestJS.
 
-Параметр-декоратор знає, куди підставити значення, завдяки `parameterIndex`. Наприклад, у методі `getUser(@Param('id') id, @Query('limit') limit)` декоратор `@Param('id')` отримує індекс `0`, а `@Query('limit')` — індекс `1`. Декоратори лише зберігають цю інформацію у metadata. Пізніше dispatcher читає metadata, формує масив аргументів у правильному порядку та викликає метод контролера.
+This project demonstrates how dependency injection, decorators, routing, HTTP dispatching and DTO validation work under the hood using TypeScript, `reflect-metadata` and the standard `node:http` module.
 
-Dispatcher реалізований на стандартному `node:http` без Express, Fastify або NestJS. Він знаходить маршрут через Router, отримує controller через IoC container з Part 1, будує аргументи для `@Param`, `@Query` та `@Body`, запускає validation pipe і серіалізує результат у JSON.
+## Features
 
-DTO validation реалізована через `class-validator` та `class-transformer`. Plain JSON body перетворюється на instance DTO перед викликом handler.
+### Part 1 — IoC Container
+
+- `@Injectable()` decorator
+- Recursive dependency resolution through `design:paramtypes`
+- Singleton scope by default
+- Transient scope with `@Injectable({ scope: 'transient' })`
+- `@Inject(token)` for string and symbol tokens
+- Manual provider registration
+- Circular dependency detection
+- IoC container based on runtime metadata
+
+### Part 2 — HTTP Layer
+
+- `@Controller(prefix)` decorator
+- `@Get(path)` decorator
+- `@Post(path)` decorator
+- `@Param(name)` parameter decorator
+- `@Query(name)` parameter decorator
+- `@Body()` parameter decorator
+- Router built from decorator metadata
+- Dynamic route parameters such as `/users/:id`
+- Dispatcher based on standard `node:http`
+- JSON body parsing
+- JSON responses
+- HTTP 404 handling
+- DTO transformation
+- DTO validation
+- HTTP 400 validation responses
+- Integration with the IoC container from Part 1
+- Vitest tests
+- Docker support
+
+## Requirements
+
+- Node.js 22+
+- TypeScript 6.x
+- Docker Desktop
+
+## Install
+
+```bash
+npm install
+```
