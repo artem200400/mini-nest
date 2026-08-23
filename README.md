@@ -1,28 +1,9 @@
-# mini-nest
+## HTTP decorators
 
-A small custom IoC container inspired by NestJS.
+`@Controller()` зберігає базовий шлях контролера у metadata, а `@Get()` і `@Post()` зберігають HTTP-метод та шлях конкретного методу.
 
-This project demonstrates how dependency injection works under the hood using TypeScript decorators and `reflect-metadata`.
+Параметр-декоратор знає, куди підставити значення, завдяки `parameterIndex`. Наприклад, у методі `getUser(@Param('id') id, @Query('limit') limit)` декоратор `@Param('id')` отримує індекс `0`, а `@Query('limit')` — індекс `1`. Декоратори лише зберігають цю інформацію у metadata. Пізніше dispatcher читає metadata, формує масив аргументів у правильному порядку та викликає метод контролера.
 
-## Features
+Dispatcher реалізований на стандартному `node:http` без Express, Fastify або NestJS. Він знаходить маршрут через Router, отримує controller через IoC container з Part 1, будує аргументи для `@Param`, `@Query` та `@Body`, запускає validation pipe і серіалізує результат у JSON.
 
-- `@Injectable()` decorator
-- Recursive dependency resolution through `design:paramtypes`
-- Singleton scope by default
-- Transient scope with `@Injectable({ scope: 'transient' })`
-- `@Inject(token)` for string and symbol tokens
-- Manual provider registration
-- Circular dependency detection
-- Vitest tests
-- Docker support
-
-## Requirements
-
-- Node.js 22+
-- TypeScript 6.x
-- Docker Desktop
-
-## Install
-
-```bash
-npm install
+DTO validation реалізована через `class-validator` та `class-transformer`. Plain JSON body перетворюється на instance DTO перед викликом handler.
