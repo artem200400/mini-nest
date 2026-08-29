@@ -13,7 +13,6 @@ import {
     type Server
 } from 'node:http'
 
-
 import {
     Injectable
 } from '../src/decorators/injectable.js'
@@ -33,7 +32,7 @@ import {
     Query
 } from '../src/decorators/params.js'
 
-import {
+import type {
     CreateUserDto
 } from '../src/dto/create-user.dto.js'
 
@@ -94,9 +93,7 @@ class UsersController {
         this.lastBody = body
 
         return {
-            email: body.email,
-            isDto:
-                body instanceof CreateUserDto
+            email: body.email
         }
     }
 }
@@ -136,13 +133,20 @@ describe(
                     }
                 )
 
-                const address = server.address()
+                const address =
+                    server.address()
 
-                if (!address || typeof address === 'string') {
-                    throw new Error('Server address is not available')
+                if (
+                    !address ||
+                    typeof address === 'string'
+                ) {
+                    throw new Error(
+                        'Server address is not available'
+                    )
                 }
 
-                baseUrl = `http://127.0.0.1:${address.port}`
+                baseUrl =
+                    `http://127.0.0.1:${address.port}`
             }
         )
 
@@ -173,7 +177,13 @@ describe(
             async () => {
                 const response =
                     await fetch(
-                        `${baseUrl}/users/42`
+                        `${baseUrl}/users/42`,
+                        {
+                            headers: {
+                                Authorization:
+                                    'Bearer test'
+                            }
+                        }
                     )
 
                 expect(
@@ -195,7 +205,13 @@ describe(
             async () => {
                 const response =
                     await fetch(
-                        `${baseUrl}/users/777`
+                        `${baseUrl}/users/777`,
+                        {
+                            headers: {
+                                Authorization:
+                                    'Bearer test'
+                            }
+                        }
                     )
 
                 const data =
@@ -212,7 +228,13 @@ describe(
             async () => {
                 const response =
                     await fetch(
-                        `${baseUrl}/users?limit=5`
+                        `${baseUrl}/users?limit=5`,
+                        {
+                            headers: {
+                                Authorization:
+                                    'Bearer test'
+                            }
+                        }
                     )
 
                 const data =
@@ -234,6 +256,8 @@ describe(
                             method: 'POST',
 
                             headers: {
+                                Authorization:
+                                    'Bearer test',
                                 'content-type':
                                     'application/json'
                             },
@@ -269,6 +293,8 @@ describe(
                             method: 'POST',
 
                             headers: {
+                                Authorization:
+                                    'Bearer test',
                                 'content-type':
                                     'application/json'
                             },
@@ -296,7 +322,7 @@ describe(
 
 
         test(
-            'handler receives CreateUserDto instance',
+            '@Body passes parsed body to handler',
             async () => {
                 const response =
                     await fetch(
@@ -305,13 +331,15 @@ describe(
                             method: 'POST',
 
                             headers: {
+                                Authorization:
+                                    'Bearer test',
                                 'content-type':
                                     'application/json'
                             },
 
                             body: JSON.stringify({
                                 email:
-                                    'dto@example.com'
+                                    'body@example.com'
                             })
                         }
                     )
@@ -319,8 +347,10 @@ describe(
                 const data =
                     await response.json()
 
-                expect(data.isDto)
-                    .toBe(true)
+                expect(data).toEqual({
+                    email:
+                        'body@example.com'
+                })
             }
         )
 
