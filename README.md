@@ -46,6 +46,30 @@ This project demonstrates how dependency injection, decorators, routing, HTTP di
 
 ## Install
 
-```bash
+````bash
 npm install
-```
+
+
+## Request lifecycle
+
+```text
+Request
+  ↓
+Middleware
+  ↓
+Guard
+  ↓
+Interceptor (before)
+  ↓
+Pipe
+  ↓
+Handler
+  ↓
+Interceptor (after)
+  ↓
+Response
+
+Any error in the chain
+  ↓
+Exception Filter
+````

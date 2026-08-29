@@ -1,22 +1,52 @@
 import 'reflect-metadata'
 
+import {
+    randomUUID
+} from 'node:crypto'
+
 import type {
     IncomingMessage,
     ServerResponse
 } from 'node:http'
 
-import { Router } from './router.js'
-import { container } from './container.js'
+import {
+    Router
+} from './router.js'
 
 import {
-    ValidationException,
-    ValidationPipe
-} from './pipes/validation.pipe.js'
+    container
+} from './container.js'
+
+import {
+    AuthGuard
+} from './guards/auth.guard.js'
+
+import {
+    LoggingInterceptor
+} from './interceptors/logging.interceptor.js'
+
+import {
+    ZodValidationPipe
+} from './pipes/zod-validation.pipe.js'
+
+import {
+    ExceptionFilter
+} from './filters/exception.filter.js'
+
+import {
+    requestContext
+} from './context/request-context.js'
+
+import {
+    CreateUserSchema
+} from './dto/create-user.dto.js'
+
 
 type ParamMetadata = {
     type: 'body' | 'param' | 'query'
     name?: string
 }
+
 
 function sendJson(
     res: ServerResponse,
@@ -30,8 +60,11 @@ function sendJson(
         'application/json; charset=utf-8'
     )
 
-    res.end(JSON.stringify(data))
+    res.end(
+        JSON.stringify(data)
+    )
 }
+
 
 async function readBody(
     req: IncomingMessage
@@ -51,7 +84,8 @@ async function readBody(
     }
 
     const text =
-        Buffer.concat(chunks).toString('utf8')
+        Buffer.concat(chunks)
+            .toString('utf8')
 
     if (!text) {
         return {}
@@ -60,209 +94,255 @@ async function readBody(
     return JSON.parse(text)
 }
 
-function shouldValidate(
-    metatype: any
-): boolean {
-    if (!metatype) {
-        return false
-    }
-
-    const ignoredTypes = [
-        String,
-        Number,
-        Boolean,
-        Object,
-        Array
-    ]
-
-    return !ignoredTypes.includes(metatype)
-}
 
 export function createDispatcher(
     router: Router,
-    appContainer: container
+    appContainer: container,
+    lifecycle?: string[]
 ) {
-    const validationPipe =
-        new ValidationPipe()
+    const guard =
+        new AuthGuard()
 
-    async function dispatch(
+    const interceptor =
+        new LoggingInterceptor()
+
+    const validationPipe =
+        new ZodValidationPipe()
+
+    const exceptionFilter =
+        new ExceptionFilter()
+
+
+    async function handleRequest(
         req: IncomingMessage,
         res: ServerResponse
     ) {
-        try {
-            const method =
-                req.method ?? 'GET'
+        const requestIdHeader =
+            req.headers['x-request-id']
 
-            const url =
-                new URL(
-                    req.url ?? '/',
-                    'http://localhost'
-                )
+        const requestId =
+            typeof requestIdHeader === 'string'
+                ? requestIdHeader
+                : randomUUID()
 
-            const found =
-                router.findRoute(
-                    method,
-                    url.pathname
-                )
+        res.setHeader(
+            'x-request-id',
+            requestId
+        )
 
-            if (!found) {
-                sendJson(
-                    res,
-                    404,
-                    {
-                        message: 'Route not found'
+
+        await requestContext.run(
+            requestId,
+            async () => {
+                try {
+                    lifecycle?.push('middleware')
+
+                    const method =
+                        req.method ?? 'GET'
+
+                    const url =
+                        new URL(
+                            req.url ?? '/',
+                            'http://localhost'
+                        )
+
+                    const found =
+                        router.findRoute(
+                            method,
+                            url.pathname
+                        )
+
+                    if (!found) {
+                        sendJson(
+                            res,
+                            404,
+                            {
+                                message:
+                                    'Route not found'
+                            }
+                        )
+
+                        return
                     }
-                )
 
-                return
-            }
 
-            const {
-                route,
-                params
-            } = found
+                    lifecycle?.push('guard')
 
-            const controller =
-                appContainer.resolve(
-                    route.Controller
-                )
+                    const allowed =
+                        guard.canActivate(req)
 
-            const prototype =
-                route.Controller.prototype
+                    if (!allowed) {
+                        sendJson(
+                            res,
+                            403,
+                            {
+                                message:
+                                    'Forbidden'
+                            }
+                        )
 
-            const paramMetadata:
-                Record<number, ParamMetadata> =
-                Reflect.getMetadata(
-                    'route:params',
-                    prototype,
-                    route.handlerName
-                ) ?? {}
-
-            const paramTypes: any[] =
-                Reflect.getMetadata(
-                    'design:paramtypes',
-                    prototype,
-                    route.handlerName
-                ) ?? []
-
-            const args =
-                new Array(paramTypes.length)
-
-            let parsedBody: unknown = undefined
-
-            for (
-                const [indexText, metadata]
-                of Object.entries(paramMetadata)
-            ) {
-                const index = Number(indexText)
-
-                if (metadata.type === 'param') {
-                    if (metadata.name) {
-                        args[index] =
-                            params[metadata.name]
+                        return
                     }
-                }
 
-                if (metadata.type === 'query') {
-                    if (metadata.name) {
-                        args[index] =
-                            url.searchParams.get(
-                                metadata.name
+
+                    const {
+                        route,
+                        params
+                    } = found
+
+
+                    const controller =
+                        appContainer.resolve(
+                            route.Controller
+                        )
+
+
+                    const prototype =
+                        route.Controller.prototype
+
+
+                    const paramMetadata:
+                        Record<number, ParamMetadata> =
+                        Reflect.getMetadata(
+                            'route:params',
+                            prototype,
+                            route.handlerName
+                        ) ?? {}
+
+
+                    const args: unknown[] = []
+
+                    let parsedBody:
+                        unknown = undefined
+
+
+                    const executeHandler =
+                        async () => {
+
+                            for (
+                                const [
+                                    indexText,
+                                    metadata
+                                ]
+                                of Object.entries(
+                                    paramMetadata
+                                )
+                            ) {
+                                const index =
+                                    Number(indexText)
+
+                                if (
+                                    metadata.type
+                                    === 'param'
+                                ) {
+                                    if (
+                                        metadata.name
+                                    ) {
+                                        args[index] =
+                                            params[
+                                            metadata.name
+                                            ]
+                                    }
+                                }
+
+
+                                if (
+                                    metadata.type
+                                    === 'query'
+                                ) {
+                                    if (
+                                        metadata.name
+                                    ) {
+                                        args[index] =
+                                            url.searchParams
+                                                .get(
+                                                    metadata.name
+                                                )
+                                    }
+                                }
+
+
+                                if (
+                                    metadata.type
+                                    === 'body'
+                                ) {
+                                    if (
+                                        parsedBody
+                                        === undefined
+                                    ) {
+                                        parsedBody =
+                                            await readBody(
+                                                req
+                                            )
+                                    }
+
+                                    lifecycle?.push(
+                                        'pipe'
+                                    )
+
+                                    args[index] =
+                                        validationPipe
+                                            .transform(
+                                                parsedBody,
+                                                CreateUserSchema
+                                            )
+                                }
+                            }
+
+
+                            lifecycle?.push(
+                                'handler'
                             )
-                    }
-                }
 
-                if (metadata.type === 'body') {
-                    if (parsedBody === undefined) {
-                        parsedBody =
-                            await readBody(req)
-                    }
+                            const handler =
+                                controller[
+                                route.handlerName
+                                ]
 
-                    const metatype =
-                        paramTypes[index]
-
-                    if (
-                        shouldValidate(metatype)
-                    ) {
-                        args[index] =
-                            await validationPipe.transform(
-                                parsedBody,
-                                metatype
+                            return await handler.apply(
+                                controller,
+                                args
                             )
-                    } else {
-                        args[index] =
-                            parsedBody
-                    }
+                        }
+
+
+                    const result =
+                        await interceptor.intercept(
+                            req,
+                            executeHandler,
+                            lifecycle
+                        )
+
+
+                    const statusCode =
+                        method === 'POST'
+                            ? 201
+                            : 200
+
+
+                    sendJson(
+                        res,
+                        statusCode,
+                        result
+                    )
+                } catch (error) {
+                    exceptionFilter.catch(
+                        error,
+                        res
+                    )
                 }
             }
-
-            const handler =
-                controller[
-                route.handlerName
-                ]
-
-            const result =
-                await handler.apply(
-                    controller,
-                    args
-                )
-
-            const statusCode =
-                method === 'POST'
-                    ? 201
-                    : 200
-
-            sendJson(
-                res,
-                statusCode,
-                result
-            )
-        } catch (error) {
-            if (
-                error
-                instanceof ValidationException
-            ) {
-                sendJson(
-                    res,
-                    400,
-                    {
-                        errors: error.errors
-                    }
-                )
-
-                return
-            }
-
-            if (
-                error instanceof SyntaxError
-            ) {
-                sendJson(
-                    res,
-                    400,
-                    {
-                        message:
-                            'Invalid JSON body'
-                    }
-                )
-
-                return
-            }
-
-            sendJson(
-                res,
-                500,
-                {
-                    message:
-                        'Internal server error'
-                }
-            )
-        }
+        )
     }
+
 
     return (
         req: IncomingMessage,
         res: ServerResponse
     ) => {
-        void dispatch(req, res)
+        void handleRequest(
+            req,
+            res
+        )
     }
 }
